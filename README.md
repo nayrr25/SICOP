@@ -43,8 +43,8 @@ docs/
   security.md                  # Reglas para no publicar secretos/datos pesados
 web/
   index.html                   # Landing page del caso NAI Analytics
-.github/workflows/
-  pages.yml                    # Publicacion gratis en GitHub Pages
+docs/
+  index.html                   # Copia publica para GitHub Pages desde /docs
 ```
 
 ## Proceso GCP
@@ -153,12 +153,13 @@ La web publica puede mostrar metodologia, capturas, resultados agregados y conta
 
 ## Web gratuita
 
-Este repositorio incluye una landing page estatica en `web/index.html`. Para publicarla gratis:
+Este repositorio incluye una landing page estatica en `docs/index.html` para publicarla gratis sin GitHub Actions:
 
 1. Ir a `Settings` en GitHub.
 2. Entrar a `Pages`.
-3. En `Build and deployment`, seleccionar `GitHub Actions`.
-4. Ejecutar el workflow `Deploy NAI SICOP web` si no corre automaticamente.
+3. En `Build and deployment`, seleccionar `Deploy from a branch`.
+4. En `Branch`, seleccionar `main` y carpeta `/docs`.
+5. Guardar.
 
 La URL esperada sera similar a:
 
