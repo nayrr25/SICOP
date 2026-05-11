@@ -59,18 +59,19 @@ Ejemplo:
 
 ```bash
 python3 src/gcp_sicop_pipeline.py \
-  --bucket fifco-marketing-dev-sicop-raw \
+  --bucket marketing_data_team \
+  --gcs-prefix Explorer_data/sicop/raw \
   --raw-base /ruta/a/bases \
-  --create-bucket \
   --upload \
+  --upload-workers 8 \
   --create-bigquery \
   --build-risk
 ```
 
-Si el bucket ya existe globalmente, cambiar el nombre:
+En este proyecto los CSV quedaron en:
 
-```bash
---bucket nai-sicop-raw-nancy
+```text
+gs://marketing_data_team/Explorer_data/sicop/raw/YYYYMM/Archivo.csv
 ```
 
 ## Tabla final
@@ -90,6 +91,23 @@ Incluye:
 - Banderas de riesgo.
 - Score de riesgo.
 - Nivel de riesgo.
+
+## Resultados generados en BigQuery
+
+El pipeline ya fue ejecutado contra el bucket `marketing_data_team` y creo:
+
+- `nai_sicop_procedure_risk`
+- `nai_sicop_procedure_risk_scored`
+- `nai_sicop_dashboard_summary`
+- `nai_sicop_top_alertas`
+
+Resumen validado:
+
+- 156,680 procedimientos analizados.
+- 16,267 procedimientos criticos.
+- 26,037 procedimientos altos o criticos.
+- 98,647 alertas totales.
+- 1,000 procedimientos en la tabla `nai_sicop_top_alertas`.
 
 ## Reglas de auditoria incluidas
 

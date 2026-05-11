@@ -9,9 +9,11 @@ import os
 import re
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 
@@ -50,6 +52,10 @@ TABLES = {
 }
 
 
+def default_schema_profile() -> Path:
+    return Path(__file__).resolve().parents[1] / "docs" / "sicop_schema_profile.json"
+
+
 def log(message: str) -> None:
     print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}", flush=True)
 
@@ -80,7 +86,12 @@ def refresh_access_token(credentials_path: Path) -> str:
         return json.loads(response.read().decode("utf-8"))["access_token"]
 
 
-def object_name(path: Path, raw_base: Path) -> str:
+def clean_prefix(prefix: str) -> str:
+    return prefix.strip("/")
+
+
+def object_name(path: Path, raw_base: Path, prefix: str) -> str:
+    base_prefix = clean_prefix(prefix)
     month = ""
     for part in path.parts:
         if re.fullmatch(r"20\d{4}", part):
@@ -88,8 +99,9 @@ def object_name(path: Path, raw_base: Path) -> str:
             break
     if not month:
         rel = path.relative_to(raw_base)
-        return f"sicop/raw/{rel.as_posix()}"
-    return f"sicop/raw/{month}/{path.name}"
+        return f"{base_prefix}/{rel.as_posix()}" if base_prefix else rel.as_posix()
+    name = f"{month}/{path.name}"
+    return f"{base_prefix}/{name}" if base_prefix else name
 
 
 def iter_csvs(raw_base: Path) -> list[Path]:
@@ -208,22 +220,80 @@ def fq(table: str, project: str = PROJECT_ID, dataset: str = DATASET) -> str:
     return f"`{project}.{dataset}.{table}`"
 
 
-def build_external_sql(bucket: str, project: str, dataset: str) -> str:
+def bq_col(name: str) -> str:
+    return "`" + name.replace("`", "") + "`"
+
+
+def normalize_col(name: str) -> str:
+    text = unicodedata.normalize("NFKD", name or "")
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = text.strip().replace("\ufeff", "")
+    text = re.sub(r"[^0-9A-Za-z_]+", "_", text)
+    text = re.sub(r"_+", "_", text).strip("_")
+    if not text:
+        text = "COL"
+    if text[0].isdigit():
+        text = "_" + text
+    return text.upper()
+
+
+def schema_columns(schema_profile: Path, csv_name: str) -> list[str]:
+    profile = json.loads(schema_profile.read_text(encoding="utf-8"))
+    columns: list[str] = []
+    seen: dict[str, int] = {}
+    for raw in profile["files"][csv_name]["columns"]:
+        col = normalize_col(raw)
+        if col in seen:
+            seen[col] += 1
+            col = f"{col}_{seen[col]}"
+        else:
+            seen[col] = 1
+        columns.append(col)
+    return columns
+
+
+def schema_delimiter(schema_profile: Path, csv_name: str) -> str:
+    profile = json.loads(schema_profile.read_text(encoding="utf-8"))
+    delimiters = profile["files"][csv_name].get("delimiters", {})
+    if not delimiters:
+        return ";"
+    return max(delimiters.items(), key=lambda item: int(item[1]))[0]
+
+
+def build_external_sql(bucket: str, prefix: str, project: str, dataset: str, schema_profile: Path) -> str:
     statements = []
+    base_prefix = clean_prefix(prefix)
     for csv_name, table in TABLES.items():
         ext = f"ext_{table}"
         raw = f"raw_{table}"
-        uri = f"gs://{bucket}/sicop/raw/*/{csv_name}"
+        uri = f"gs://{bucket}/{base_prefix}/*/{csv_name}" if base_prefix else f"gs://{bucket}/*/{csv_name}"
+        columns = schema_columns(schema_profile, csv_name)
+        schema = ",\n  ".join(f"{bq_col(col)} STRING" for col in columns)
+        raw_schema = schema + ",\n  `MES_DESCARGA` STRING,\n  `SOURCE_FILE` STRING"
+        delimiter = schema_delimiter(schema_profile, csv_name)
+        if csv_name == "Sistemas.csv":
+            statements.append(
+                f"""
+CREATE OR REPLACE TABLE {fq(raw, project, dataset)} (
+  {raw_schema}
+);
+"""
+            )
+            continue
         statements.append(
             f"""
-CREATE OR REPLACE EXTERNAL TABLE {fq(ext, project, dataset)}
+CREATE OR REPLACE EXTERNAL TABLE {fq(ext, project, dataset)} (
+  {schema}
+)
 OPTIONS (
   format = 'CSV',
   uris = ['{uri}'],
-  field_delimiter = ';',
+  field_delimiter = '{delimiter}',
   skip_leading_rows = 1,
   allow_quoted_newlines = TRUE,
-  autodetect = TRUE,
+  allow_jagged_rows = TRUE,
+  ignore_unknown_values = TRUE,
+  max_bad_records = 100000,
   encoding = 'UTF-8'
 );
 
@@ -614,10 +684,10 @@ LIMIT 1000;
 """
 
 
-def write_sql_files(out_dir: Path, bucket: str, project: str, dataset: str) -> None:
+def write_sql_files(out_dir: Path, bucket: str, prefix: str, project: str, dataset: str, schema_profile: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "01_external_and_raw_tables.sql").write_text(
-        build_external_sql(bucket, project, dataset), encoding="utf-8"
+        build_external_sql(bucket, prefix, project, dataset, schema_profile), encoding="utf-8"
     )
     (out_dir / "02_risk_model.sql").write_text(risk_sql(project, dataset), encoding="utf-8")
     log(f"SQL generado en {out_dir}")
@@ -629,12 +699,15 @@ def main() -> int:
     parser.add_argument("--dataset", default=DATASET)
     parser.add_argument("--location", default=LOCATION)
     parser.add_argument("--bucket", required=True)
+    parser.add_argument("--gcs-prefix", default="sicop/raw")
     parser.add_argument("--raw-base", default="/Users/nancyrodriguez/Documents/Contraloria/bases")
     parser.add_argument("--credentials", default=str(ADC_PATH))
     parser.add_argument("--sql-out", default="gcp_sicop/generated_sql")
+    parser.add_argument("--schema-profile", default="")
     parser.add_argument("--create-bucket", action="store_true")
     parser.add_argument("--upload", action="store_true")
     parser.add_argument("--force-upload", action="store_true")
+    parser.add_argument("--upload-workers", type=int, default=8)
     parser.add_argument("--create-bigquery", action="store_true")
     parser.add_argument("--build-risk", action="store_true")
     args = parser.parse_args()
@@ -645,8 +718,11 @@ def main() -> int:
     credentials = Path(args.credentials)
     if not credentials.exists():
         raise SystemExit(f"No existen credenciales ADC: {credentials}")
+    schema_profile = Path(args.schema_profile) if args.schema_profile else default_schema_profile()
+    if not schema_profile.exists():
+        raise SystemExit(f"No existe perfil de esquema: {schema_profile}")
 
-    write_sql_files(Path(args.sql_out), args.bucket, args.project, args.dataset)
+    write_sql_files(Path(args.sql_out), args.bucket, args.gcs_prefix, args.project, args.dataset, schema_profile)
 
     needs_google_api = args.upload or args.create_bigquery or args.build_risk
     token = refresh_access_token(credentials) if needs_google_api else ""
@@ -655,17 +731,38 @@ def main() -> int:
         ensure_bucket(token, args.bucket, args.project, args.create_bucket, args.location)
         files = iter_csvs(raw_base)
         log(f"CSV a subir: {len(files)}")
-        for idx, path in enumerate(files, 1):
-            upload_file(token, args.bucket, path, object_name(path, raw_base), force=args.force_upload)
-            if idx % 25 == 0:
-                log(f"Avance upload: {idx}/{len(files)}")
+        workers = max(1, args.upload_workers)
+        if workers == 1:
+            for idx, path in enumerate(files, 1):
+                upload_file(token, args.bucket, path, object_name(path, raw_base, args.gcs_prefix), force=args.force_upload)
+                if idx % 25 == 0:
+                    log(f"Avance upload: {idx}/{len(files)}")
+        else:
+            completed = 0
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {
+                    executor.submit(
+                        upload_file,
+                        token,
+                        args.bucket,
+                        path,
+                        object_name(path, raw_base, args.gcs_prefix),
+                        args.force_upload,
+                    ): path
+                    for path in files
+                }
+                for future in as_completed(futures):
+                    future.result()
+                    completed += 1
+                    if completed % 25 == 0:
+                        log(f"Avance upload: {completed}/{len(files)}")
 
     if args.create_bigquery:
         run_query(
             token,
             args.project,
             args.location,
-            build_external_sql(args.bucket, args.project, args.dataset),
+            build_external_sql(args.bucket, args.gcs_prefix, args.project, args.dataset, schema_profile),
             "external y raw tables",
         )
 
