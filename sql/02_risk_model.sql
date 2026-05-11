@@ -368,3 +368,180 @@ FROM `fifco-marketing-dev.ExploracionDataTeam.nai_sicop_procedure_risk_scored`
 WHERE score_riesgo > 0
 ORDER BY score_riesgo DESC, monto_adjudicado_total DESC
 LIMIT 1000;
+
+CREATE OR REPLACE TABLE `fifco-marketing-dev.ExploracionDataTeam.nai_sicop_linea_integrada` AS
+WITH
+cartel AS (
+  SELECT
+    dc.NRO_SICOP AS nro_sicop,
+    dc.NRO_PROCEDIMIENTO AS nro_procedimiento,
+    dc.CEDULA_INSTITUCION AS cedula_institucion,
+    dc.TIPO_PROCEDIMIENTO AS tipo_procedimiento,
+    dc.MODALIDAD_PROCEDIMIENTO AS modalidad_procedimiento,
+    dc.FECHA_PUBLICACION AS fecha_publicacion,
+    dc.FECHAH_APERTURA AS fecha_apertura,
+    dl.NUMERO_LINEA AS nro_linea,
+    dl.NUMERO_PARTIDA AS nro_partida,
+    dl.CODIGO_IDENTIFICACION AS codigo_producto_cartel,
+    SUBSTR(dl.CODIGO_IDENTIFICACION, 1, 4) AS cod_nivel1_cartel,
+    dl.DESC_LINEA AS descripcion_linea_cartel,
+    SAFE_CAST(REPLACE(COALESCE(dl.CANTIDAD_SOLICITADA, '0'), ',', '.') AS FLOAT64) AS cantidad_solicitada,
+    SAFE_CAST(REPLACE(COALESCE(dl.PRECIO_UNITARIO_ESTIMADO, '0'), ',', '.') AS FLOAT64) AS precio_unitario_estimado,
+    SAFE_CAST(REPLACE(COALESCE(dl.MONTO_RESERVADO, '0'), ',', '.') AS FLOAT64) AS monto_estimado_linea,
+    dc.MES_DESCARGA AS mes_descarga
+  FROM `fifco-marketing-dev.ExploracionDataTeam.raw_detalle_linea_cartel` dl
+  LEFT JOIN `fifco-marketing-dev.ExploracionDataTeam.raw_detalle_carteles` dc
+    ON dc.NRO_SICOP = dl.NRO_SICOP
+),
+oferta_linea AS (
+  SELECT
+    lo.NRO_SICOP AS nro_sicop,
+    lo.NRO_OFERTA AS nro_oferta,
+    lo.NRO_LINEA AS nro_linea,
+    o.CEDULA_PROVEEDOR AS cedula_proveedor_oferta,
+    o.FECHA_PRESENTA_OFERTA AS fecha_presenta_oferta,
+    o.TIPO_OFERTA AS tipo_oferta,
+    lo.CODIGO_PRODUCTO AS codigo_producto_oferta,
+    SUBSTR(lo.CODIGO_PRODUCTO, 1, 4) AS cod_nivel1_oferta,
+    SAFE_CAST(REPLACE(COALESCE(lo.CANTIDAD_OFERTADA, '0'), ',', '.') AS FLOAT64) AS cantidad_ofertada,
+    SAFE_CAST(REPLACE(COALESCE(lo.PRECIO_UNITARIO_OFERTADO, '0'), ',', '.') AS FLOAT64) AS precio_unitario_ofertado,
+    SAFE_CAST(REPLACE(COALESCE(lo.CANTIDAD_OFERTADA, '0'), ',', '.') AS FLOAT64)
+      * SAFE_CAST(REPLACE(COALESCE(lo.PRECIO_UNITARIO_OFERTADO, '0'), ',', '.') AS FLOAT64) AS monto_ofertado_linea
+  FROM `fifco-marketing-dev.ExploracionDataTeam.raw_lineas_ofertadas` lo
+  LEFT JOIN `fifco-marketing-dev.ExploracionDataTeam.raw_ofertas` o
+    ON o.NRO_SICOP = lo.NRO_SICOP
+   AND o.NRO_OFERTA = lo.NRO_OFERTA
+),
+adjudicacion_linea AS (
+  SELECT
+    la.NRO_SICOP AS nro_sicop,
+    la.NRO_OFERTA AS nro_oferta,
+    la.NRO_LINEA AS nro_linea,
+    la.NRO_ACTO AS nro_acto,
+    la.CEDULA_PROVEEDOR AS cedula_proveedor_adjudicado,
+    af.FECHA_ADJ_FIRME AS fecha_adj_firme,
+    la.CODIGO_PRODUCTO AS codigo_producto_adjudicado,
+    SUBSTR(la.CODIGO_PRODUCTO, 1, 4) AS cod_nivel1_adjudicado,
+    SAFE_CAST(REPLACE(COALESCE(la.CANTIDAD_ADJUDICADA, '0'), ',', '.') AS FLOAT64) AS cantidad_adjudicada,
+    SAFE_CAST(REPLACE(COALESCE(la.PRECIO_UNITARIO_ADJUDICADO, '0'), ',', '.') AS FLOAT64) AS precio_unitario_adjudicado,
+    SAFE_CAST(REPLACE(COALESCE(la.CANTIDAD_ADJUDICADA, '0'), ',', '.') AS FLOAT64)
+      * SAFE_CAST(REPLACE(COALESCE(la.PRECIO_UNITARIO_ADJUDICADO, '0'), ',', '.') AS FLOAT64) AS monto_adjudicado_linea
+  FROM `fifco-marketing-dev.ExploracionDataTeam.raw_lineas_adjudicadas` la
+  LEFT JOIN `fifco-marketing-dev.ExploracionDataTeam.raw_adjudicaciones_firme` af
+    ON af.NRO_SICOP = la.NRO_SICOP
+   AND af.NRO_ACTO = la.NRO_ACTO
+),
+invitacion AS (
+  SELECT
+    NRO_SICOP AS nro_sicop,
+    CEDULA_PROVEEDOR AS cedula_proveedor,
+    ARRAY_AGG(NOMBRE_PROVEEDOR IGNORE NULLS ORDER BY FECHA_INVITACION LIMIT 1)[SAFE_OFFSET(0)] AS nombre_proveedor,
+    ARRAY_AGG(INSTITUCION IGNORE NULLS ORDER BY FECHA_INVITACION LIMIT 1)[SAFE_OFFSET(0)] AS nombre_institucion,
+    ARRAY_AGG(CED_INSTITUCION IGNORE NULLS ORDER BY FECHA_INVITACION LIMIT 1)[SAFE_OFFSET(0)] AS cedula_institucion_invitacion,
+    MIN(FECHA_INVITACION) AS fecha_invitacion
+  FROM `fifco-marketing-dev.ExploracionDataTeam.raw_invitacion_procedimiento`
+  GROUP BY nro_sicop, cedula_proveedor
+),
+integrada AS (
+  SELECT
+    c.*,
+    ol.nro_oferta,
+    ol.cedula_proveedor_oferta,
+    inv.nombre_proveedor,
+    inv.nombre_institucion,
+    inv.cedula_institucion_invitacion,
+    inv.fecha_invitacion,
+    ol.fecha_presenta_oferta,
+    ol.tipo_oferta,
+    ol.codigo_producto_oferta,
+    ol.cod_nivel1_oferta,
+    ol.cantidad_ofertada,
+    ol.precio_unitario_ofertado,
+    ol.monto_ofertado_linea,
+    al.nro_acto,
+    al.cedula_proveedor_adjudicado,
+    al.fecha_adj_firme,
+    al.codigo_producto_adjudicado,
+    al.cod_nivel1_adjudicado,
+    al.cantidad_adjudicada,
+    al.precio_unitario_adjudicado,
+    al.monto_adjudicado_linea
+  FROM cartel c
+  LEFT JOIN oferta_linea ol
+    ON ol.nro_sicop = c.nro_sicop
+   AND CAST(ol.nro_linea AS STRING) = CAST(c.nro_linea AS STRING)
+  LEFT JOIN adjudicacion_linea al
+    ON al.nro_sicop = c.nro_sicop
+   AND CAST(al.nro_linea AS STRING) = CAST(c.nro_linea AS STRING)
+   AND COALESCE(al.nro_oferta, '') = COALESCE(ol.nro_oferta, '')
+  LEFT JOIN invitacion inv
+    ON inv.nro_sicop = c.nro_sicop
+   AND inv.cedula_proveedor = ol.cedula_proveedor_oferta
+),
+percentiles AS (
+  SELECT
+    APPROX_QUANTILES(monto_estimado_linea, 100)[OFFSET(95)] AS p95_monto_estimado_linea,
+    APPROX_QUANTILES(monto_ofertado_linea, 100)[OFFSET(95)] AS p95_monto_ofertado_linea,
+    APPROX_QUANTILES(monto_adjudicado_linea, 100)[OFFSET(95)] AS p95_monto_adjudicado_linea,
+    APPROX_QUANTILES(cantidad_solicitada, 100)[OFFSET(95)] AS p95_cantidad_solicitada,
+    APPROX_QUANTILES(cantidad_ofertada, 100)[OFFSET(95)] AS p95_cantidad_ofertada,
+    APPROX_QUANTILES(cantidad_adjudicada, 100)[OFFSET(95)] AS p95_cantidad_adjudicada
+  FROM integrada
+)
+SELECT
+  i.*,
+  IF(i.fecha_publicacion IS NOT NULL AND i.fecha_invitacion IS NOT NULL AND i.fecha_publicacion > i.fecha_invitacion, 1, 0) AS flag_publicacion_posterior_invitacion,
+  IF(i.fecha_invitacion IS NOT NULL AND i.fecha_presenta_oferta IS NOT NULL AND i.fecha_invitacion > i.fecha_presenta_oferta, 1, 0) AS flag_invitacion_posterior_oferta_linea,
+  IF(i.fecha_presenta_oferta IS NOT NULL AND i.fecha_adj_firme IS NOT NULL AND i.fecha_presenta_oferta > i.fecha_adj_firme, 1, 0) AS flag_oferta_posterior_adjudicacion,
+  IF(i.monto_estimado_linea > 0 AND i.monto_ofertado_linea IS NOT NULL AND ABS(i.monto_estimado_linea - i.monto_ofertado_linea) / i.monto_estimado_linea > 0.05, 1, 0) AS flag_monto_ofertado_difiere_5pct_linea,
+  IF(i.monto_estimado_linea > 0 AND i.monto_adjudicado_linea IS NOT NULL AND ABS(i.monto_estimado_linea - i.monto_adjudicado_linea) / i.monto_estimado_linea > 0.05, 1, 0) AS flag_monto_adjudicado_difiere_5pct_linea,
+  IF(i.cantidad_solicitada IS NOT NULL AND i.cantidad_ofertada IS NOT NULL AND i.cantidad_solicitada < i.cantidad_ofertada, 1, 0) AS flag_cantidad_solicitada_menor_ofertada,
+  IF(i.cantidad_solicitada IS NOT NULL AND i.cantidad_adjudicada IS NOT NULL AND i.cantidad_solicitada < i.cantidad_adjudicada, 1, 0) AS flag_cantidad_solicitada_menor_adjudicada,
+  IF(i.cod_nivel1_cartel IS NOT NULL AND i.cod_nivel1_oferta IS NOT NULL AND i.cod_nivel1_cartel <> i.cod_nivel1_oferta, 1, 0) AS flag_codigo_nivel1_cartel_oferta_distinto,
+  IF(i.cedula_institucion IS NOT NULL AND i.cedula_institucion_invitacion IS NOT NULL AND i.cedula_institucion <> i.cedula_institucion_invitacion, 1, 0) AS flag_institucion_distinta,
+  IF(i.cedula_proveedor_oferta IS NOT NULL AND i.cedula_proveedor_adjudicado IS NOT NULL AND i.cedula_proveedor_oferta <> i.cedula_proveedor_adjudicado, 1, 0) AS flag_proveedor_oferta_adjudicacion_distinto,
+  (
+    IF(i.monto_estimado_linea > p.p95_monto_estimado_linea AND p.p95_monto_estimado_linea > 0, 1, 0)
+    + IF(i.monto_ofertado_linea > p.p95_monto_ofertado_linea AND p.p95_monto_ofertado_linea > 0, 1, 0)
+    + IF(i.monto_adjudicado_linea > p.p95_monto_adjudicado_linea AND p.p95_monto_adjudicado_linea > 0, 1, 0)
+    + IF(i.cantidad_solicitada > p.p95_cantidad_solicitada AND p.p95_cantidad_solicitada > 0, 1, 0)
+    + IF(i.cantidad_ofertada > p.p95_cantidad_ofertada AND p.p95_cantidad_ofertada > 0, 1, 0)
+    + IF(i.cantidad_adjudicada > p.p95_cantidad_adjudicada AND p.p95_cantidad_adjudicada > 0, 1, 0)
+  ) AS flags_anomalia_estadistica_linea
+FROM integrada i
+CROSS JOIN percentiles p;
+
+CREATE OR REPLACE TABLE `fifco-marketing-dev.ExploracionDataTeam.nai_sicop_inconsistencias_linea` AS
+SELECT * FROM (
+  SELECT nro_sicop, nro_procedimiento, nro_linea, nro_oferta, cedula_institucion, nombre_institucion, cedula_proveedor_oferta, nombre_proveedor, 'Publicacion posterior a invitacion' AS tipo_inconsistencia, 'fecha_publicacion' AS columna_1, 'fecha_invitacion' AS columna_2, CAST(fecha_publicacion AS STRING) AS valor_1, CAST(fecha_invitacion AS STRING) AS valor_2, mes_descarga FROM `fifco-marketing-dev.ExploracionDataTeam.nai_sicop_linea_integrada` WHERE flag_publicacion_posterior_invitacion = 1
+  UNION ALL
+  SELECT nro_sicop, nro_procedimiento, nro_linea, nro_oferta, cedula_institucion, nombre_institucion, cedula_proveedor_oferta, nombre_proveedor, 'Invitacion posterior a oferta', 'fecha_invitacion', 'fecha_presenta_oferta', CAST(fecha_invitacion AS STRING), CAST(fecha_presenta_oferta AS STRING), mes_descarga FROM `fifco-marketing-dev.ExploracionDataTeam.nai_sicop_linea_integrada` WHERE flag_invitacion_posterior_oferta_linea = 1
+  UNION ALL
+  SELECT nro_sicop, nro_procedimiento, nro_linea, nro_oferta, cedula_institucion, nombre_institucion, cedula_proveedor_oferta, nombre_proveedor, 'Oferta posterior a adjudicacion firme', 'fecha_presenta_oferta', 'fecha_adj_firme', CAST(fecha_presenta_oferta AS STRING), CAST(fecha_adj_firme AS STRING), mes_descarga FROM `fifco-marketing-dev.ExploracionDataTeam.nai_sicop_linea_integrada` WHERE flag_oferta_posterior_adjudicacion = 1
+  UNION ALL
+  SELECT nro_sicop, nro_procedimiento, nro_linea, nro_oferta, cedula_institucion, nombre_institucion, cedula_proveedor_oferta, nombre_proveedor, 'Diferencia significativa en monto ofertado', 'monto_estimado_linea', 'monto_ofertado_linea', CAST(monto_estimado_linea AS STRING), CAST(monto_ofertado_linea AS STRING), mes_descarga FROM `fifco-marketing-dev.ExploracionDataTeam.nai_sicop_linea_integrada` WHERE flag_monto_ofertado_difiere_5pct_linea = 1
+  UNION ALL
+  SELECT nro_sicop, nro_procedimiento, nro_linea, nro_oferta, cedula_institucion, nombre_institucion, cedula_proveedor_oferta, nombre_proveedor, 'Diferencia significativa en monto adjudicado', 'monto_estimado_linea', 'monto_adjudicado_linea', CAST(monto_estimado_linea AS STRING), CAST(monto_adjudicado_linea AS STRING), mes_descarga FROM `fifco-marketing-dev.ExploracionDataTeam.nai_sicop_linea_integrada` WHERE flag_monto_adjudicado_difiere_5pct_linea = 1
+  UNION ALL
+  SELECT nro_sicop, nro_procedimiento, nro_linea, nro_oferta, cedula_institucion, nombre_institucion, cedula_proveedor_oferta, nombre_proveedor, 'Cantidad solicitada menor que ofertada', 'cantidad_solicitada', 'cantidad_ofertada', CAST(cantidad_solicitada AS STRING), CAST(cantidad_ofertada AS STRING), mes_descarga FROM `fifco-marketing-dev.ExploracionDataTeam.nai_sicop_linea_integrada` WHERE flag_cantidad_solicitada_menor_ofertada = 1
+  UNION ALL
+  SELECT nro_sicop, nro_procedimiento, nro_linea, nro_oferta, cedula_institucion, nombre_institucion, cedula_proveedor_oferta, nombre_proveedor, 'Cantidad solicitada menor que adjudicada', 'cantidad_solicitada', 'cantidad_adjudicada', CAST(cantidad_solicitada AS STRING), CAST(cantidad_adjudicada AS STRING), mes_descarga FROM `fifco-marketing-dev.ExploracionDataTeam.nai_sicop_linea_integrada` WHERE flag_cantidad_solicitada_menor_adjudicada = 1
+  UNION ALL
+  SELECT nro_sicop, nro_procedimiento, nro_linea, nro_oferta, cedula_institucion, nombre_institucion, cedula_proveedor_oferta, nombre_proveedor, 'Inconsistencia en codigo de producto', 'cod_nivel1_cartel', 'cod_nivel1_oferta', CAST(cod_nivel1_cartel AS STRING), CAST(cod_nivel1_oferta AS STRING), mes_descarga FROM `fifco-marketing-dev.ExploracionDataTeam.nai_sicop_linea_integrada` WHERE flag_codigo_nivel1_cartel_oferta_distinto = 1
+  UNION ALL
+  SELECT nro_sicop, nro_procedimiento, nro_linea, nro_oferta, cedula_institucion, nombre_institucion, cedula_proveedor_oferta, nombre_proveedor, 'Inconsistencia en informacion de institucion', 'cedula_institucion', 'cedula_institucion_invitacion', CAST(cedula_institucion AS STRING), CAST(cedula_institucion_invitacion AS STRING), mes_descarga FROM `fifco-marketing-dev.ExploracionDataTeam.nai_sicop_linea_integrada` WHERE flag_institucion_distinta = 1
+  UNION ALL
+  SELECT nro_sicop, nro_procedimiento, nro_linea, nro_oferta, cedula_institucion, nombre_institucion, cedula_proveedor_oferta, nombre_proveedor, 'Inconsistencia en informacion de proveedor', 'cedula_proveedor_oferta', 'cedula_proveedor_adjudicado', CAST(cedula_proveedor_oferta AS STRING), CAST(cedula_proveedor_adjudicado AS STRING), mes_descarga FROM `fifco-marketing-dev.ExploracionDataTeam.nai_sicop_linea_integrada` WHERE flag_proveedor_oferta_adjudicacion_distinto = 1
+  UNION ALL
+  SELECT nro_sicop, nro_procedimiento, nro_linea, nro_oferta, cedula_institucion, nombre_institucion, cedula_proveedor_oferta, nombre_proveedor, 'Anomalia estadistica de linea', 'metricas_linea', 'percentil_95', CAST(flags_anomalia_estadistica_linea AS STRING), 'supera umbral', mes_descarga FROM `fifco-marketing-dev.ExploracionDataTeam.nai_sicop_linea_integrada` WHERE flags_anomalia_estadistica_linea > 0
+);
+
+CREATE OR REPLACE TABLE `fifco-marketing-dev.ExploracionDataTeam.nai_sicop_inconsistencias_resumen` AS
+SELECT
+  tipo_inconsistencia,
+  COUNT(*) AS total_registros,
+  COUNT(DISTINCT nro_sicop) AS procedimientos_afectados,
+  COUNT(DISTINCT cedula_proveedor_oferta) AS proveedores_afectados
+FROM `fifco-marketing-dev.ExploracionDataTeam.nai_sicop_inconsistencias_linea`
+GROUP BY tipo_inconsistencia
+ORDER BY total_registros DESC;

@@ -100,6 +100,9 @@ El pipeline ya fue ejecutado contra el bucket `marketing_data_team` y creo:
 - `nai_sicop_procedure_risk_scored`
 - `nai_sicop_dashboard_summary`
 - `nai_sicop_top_alertas`
+- `nai_sicop_linea_integrada`
+- `nai_sicop_inconsistencias_linea`
+- `nai_sicop_inconsistencias_resumen`
 
 Resumen validado:
 
@@ -108,6 +111,20 @@ Resumen validado:
 - 26,037 procedimientos altos o criticos.
 - 98,647 alertas totales.
 - 1,000 procedimientos en la tabla `nai_sicop_top_alertas`.
+- 962,491 registros en la tabla integrada linea/oferta/adjudicacion.
+- 745,157 inconsistencias de linea en formato auditable.
+
+Resumen adicional inspirado en los notebooks originales:
+
+- 456,911 diferencias significativas en monto ofertado.
+- 171,469 diferencias significativas en monto adjudicado.
+- 106,256 anomalias estadisticas de linea.
+- 7,431 casos donde la cantidad solicitada es menor que la adjudicada.
+- 3,061 casos con invitacion posterior a oferta.
+- 16 inconsistencias en codigo de producto.
+- 8 inconsistencias en informacion de institucion.
+- 4 casos donde la cantidad solicitada es menor que la ofertada.
+- 1 caso con publicacion posterior a invitacion.
 
 ## Reglas de auditoria incluidas
 
