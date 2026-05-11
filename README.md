@@ -43,6 +43,8 @@ docs/
   security.md                  # Reglas para no publicar secretos/datos pesados
 web/
   index.html                   # Landing page del caso NAI Analytics
+.github/workflows/
+  pages.yml                    # Publicacion gratis en GitHub Pages
 ```
 
 ## Proceso GCP
@@ -114,3 +116,17 @@ NAI Analytics para Auditoria Publica
 
 La web publica puede mostrar metodologia, capturas, resultados agregados y contacto. El detalle completo, datos crudos y dashboards operativos deben manejarse como producto privado o acceso controlado.
 
+## Web gratuita
+
+Este repositorio incluye una landing page estatica en `web/index.html`. Para publicarla gratis:
+
+1. Ir a `Settings` en GitHub.
+2. Entrar a `Pages`.
+3. En `Build and deployment`, seleccionar `GitHub Actions`.
+4. Ejecutar el workflow `Deploy NAI SICOP web` si no corre automaticamente.
+
+La URL esperada sera similar a:
+
+```text
+https://nayrr25.github.io/SICOP/
+```
