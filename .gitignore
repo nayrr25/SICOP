@@ -1,0 +1,40 @@
+# macOS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+*.jsonl
+application_default_credentials.json
+service-account*.json
+credentials*.json
+token*.json
+
+# Raw data and heavy local artifacts
+data/
+raw/
+bases/
+*.zip
+*.csv
+*.sqlite
+*.db
+*.parquet
+*.xlsx
+*.xls
+
+# Generated outputs
+outputs/
+nai_sicop_outputs/
+*.log
+

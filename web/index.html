@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NAI Analytics | Auditoria SICOP</title>
+  <meta name="description" content="Caso NAI Analytics: arquitectura de datos, BigQuery y motor de riesgo para auditoria de contratacion publica SICOP.">
+  <style>
+    :root {
+      --ink: #18212b;
+      --muted: #596775;
+      --line: #d9e2ea;
+      --paper: #f5f8fb;
+      --white: #fff;
+      --blue: #0b5cab;
+      --green: #0f766e;
+      --gold: #9f6b00;
+      --red: #b42318;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+      line-height: 1.55;
+    }
+    a { color: inherit; text-decoration: none; }
+    .shell { width: min(1120px, calc(100% - 36px)); margin: 0 auto; }
+    header {
+      background: rgba(255,255,255,.95);
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    nav {
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; }
+    .mark {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      background: var(--ink);
+      color: var(--white);
+    }
+    .links { display: flex; gap: 18px; color: var(--muted); font-size: 14px; }
+    .hero { padding: 76px 0 58px; background: linear-gradient(135deg, #fff 0%, #eef5fb 100%); }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.08fr .92fr;
+      gap: 42px;
+      align-items: center;
+    }
+    .eyebrow {
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    h1 {
+      margin: 0 0 22px;
+      font-size: clamp(40px, 6vw, 72px);
+      line-height: 1;
+      letter-spacing: 0;
+    }
+    h2 { margin: 0 0 16px; font-size: clamp(28px, 4vw, 42px); line-height: 1.1; }
+    h3 { margin: 0 0 8px; font-size: 18px; }
+    p { margin: 0 0 18px; color: var(--muted); }
+    .lead { font-size: 20px; color: #33414f; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+    .btn {
+      display: inline-flex;
+      min-height: 46px;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 18px;
+      background: var(--white);
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .btn.primary { background: var(--blue); color: var(--white); border-color: var(--blue); }
+    .panel {
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 22px;
+      box-shadow: 0 18px 45px rgba(24,33,43,.1);
+    }
+    .metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 18px; }
+    .metric { border: 1px solid var(--line); border-radius: 8px; padding: 16px; background: #fbfdff; }
+    .metric strong { display: block; font-size: 28px; line-height: 1; margin-bottom: 8px; }
+    .metric span { color: var(--muted); font-size: 13px; }
+    section { padding: 68px 0; background: var(--white); border-top: 1px solid var(--line); }
+    section.alt { background: var(--paper); }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .card { border: 1px solid var(--line); border-radius: 8px; padding: 20px; background: var(--white); }
+    .card b { color: var(--ink); }
+    .flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 22px; }
+    .step { border-left: 4px solid var(--blue); background: var(--white); padding: 16px; border-radius: 8px; }
+    .risk { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    footer { padding: 34px 0; color: var(--muted); border-top: 1px solid var(--line); }
+    @media (max-width: 860px) {
+      .hero-grid, .grid, .risk, .flow { grid-template-columns: 1fr; }
+      .links { display: none; }
+      .metrics { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <nav class="shell">
+      <a class="brand" href="#inicio"><span class="mark">NAI</span><span>Analytics</span></a>
+      <div class="links">
+        <a href="#arquitectura">Arquitectura</a>
+        <a href="#riesgos">Riesgos</a>
+        <a href="#producto">Producto</a>
+        <a href="https://github.com/nayrr25/SICOP">GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <main id="inicio">
+    <section class="hero">
+      <div class="shell hero-grid">
+        <div>
+          <div class="eyebrow">NAI Analytics para Auditoria Publica</div>
+          <h1>Motor de riesgo para contratacion publica SICOP</h1>
+          <p class="lead">Arquitectura cloud, base analitica y reglas de control preventivo para detectar inconsistencias en procedimientos de compra publica.</p>
+          <div class="actions">
+            <a class="btn primary" href="https://github.com/nayrr25/SICOP">Ver repositorio</a>
+            <a class="btn" href="#producto">Ver enfoque comercial</a>
+          </div>
+        </div>
+        <aside class="panel">
+          <h3>Base historica 2022-2026</h3>
+          <p>Pipeline preparado para cargar CSV mensuales a Cloud Storage y BigQuery, construir una tabla final de riesgo y alimentar dashboards ejecutivos.</p>
+          <div class="metrics">
+            <div class="metric"><strong>53</strong><span>meses procesados</span></div>
+            <div class="metric"><strong>25</strong><span>tablas SICOP</span></div>
+            <div class="metric"><strong>65M+</strong><span>filas integradas</span></div>
+            <div class="metric"><strong>GCP</strong><span>BigQuery + Storage</span></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="arquitectura">
+      <div class="shell">
+        <h2>Arquitectura reproducible</h2>
+        <p>El proyecto separa datos crudos, tablas raw, modelo analitico y consumo visual para que el procesamiento pesado ocurra en BigQuery y no en memoria local.</p>
+        <div class="flow">
+          <div class="step"><b>1. Descarga</b><br>CSV mensuales SICOP</div>
+          <div class="step"><b>2. Storage</b><br>Raw files por mes</div>
+          <div class="step"><b>3. BigQuery</b><br>External y raw tables</div>
+          <div class="step"><b>4. Riesgo</b><br>Tabla final auditada</div>
+          <div class="step"><b>5. Dashboard</b><br>Looker, web o API</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="riesgos" class="alt">
+      <div class="shell">
+        <h2>Alertas de auditoria</h2>
+        <div class="risk">
+          <div class="card"><b>Secuencia temporal</b><p>Ofertas antes de publicacion, invitaciones posteriores a oferta, adjudicaciones antes de oferta y contratos antes de adjudicacion.</p></div>
+          <div class="card"><b>Montos y cantidades</b><p>Diferencias mayores a 5%, cantidades adjudicadas u ofertadas superiores a lo solicitado.</p></div>
+          <div class="card"><b>Proveedor</b><p>Proveedor adjudicado sin oferta localizada, proveedores sancionados y concentracion de adjudicaciones.</p></div>
+          <div class="card"><b>Ejecucion contractual</b><p>Adjudicaciones sin contrato, contratos sin recepcion y reajustes de precio.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="producto">
+      <div class="shell">
+        <h2>De caso tecnico a producto NAI</h2>
+        <div class="grid">
+          <div class="card"><h3>NAI Analytics</h3><p>Dashboards, modelos de riesgo y monitoreo ejecutivo para auditoria y cumplimiento.</p></div>
+          <div class="card"><h3>NAI Cloud</h3><p>Arquitectura escalable en BigQuery, almacenamiento cloud y procesos reproducibles.</p></div>
+          <div class="card"><h3>NAI Automation</h3><p>Automatizacion de descargas, cargas, reglas, reportes y actualizacion periodica.</p></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="shell">Propietaria: Nancy Raquel Rodriguez Ramos · NAI Analytics</div>
+  </footer>
+</body>
+</html>
+
